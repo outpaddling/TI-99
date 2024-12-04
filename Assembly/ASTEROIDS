@@ -1,0 +1,787 @@
+       DEF  ASTRO
+       REF  VSBW,VSBR,VMBW,VMBR,KSCAN,VWTR,VDPWA,VDPWD,VDPRD
+ 
+KBOARD EQU  >8374
+KCODE  EQU  >8375
+YVAL   EQU  >8376
+XVAL   EQU  >8377
+STATUS EQU  >837C
+INMOTN EQU  >837A
+ 
+ASTRO  LI   R0,>0701
+       BLWP @VWTR
+ 
+       LI   R0,>01E2     SPRITE MAG 3
+       BLWP @VWTR
+       SWPB R0
+       MOVB R0,@>83D4
+ 
+       LI   R0,>0380     START OF COLOR TABLE
+       LI   R1,>F100
+SETCOL BLWP @VSBW
+       INC  R0
+       CI   R0,>0400
+       JNE  SETCOL
+ 
+*************
+* CHAR DEFS *
+*************
+ 
+       LI   R0,>80*8     LOAD CHAR DEFS FOR SHIP
+       LI   R3,UPDEF     CHAR >80->87 (128-135)
+SHP    LI   R2,8
+       MOV  R3,R1
+       BLWP @VMBW
+       AI   R0,8         BLANK NEXT 3
+       LI   R1,BLANK
+       LI   R2,24
+       BLWP @VMBW
+       AI   R3,8         NEXT DATA
+       AI   R0,24        NEXT SDT LOCATION
+       CI   R0,>A0*8
+       JNE  SHP
+ 
+       LI   R0,>A0*8     MISSILE
+       LI   R1,MSLDEF
+       LI   R2,8
+       BLWP @VMBW
+ 
+       LI   R0,>A8*8     DEBRI
+       LI   R1,DEBDEF
+       BLWP @VMBW
+ 
+       LI   R0,>A4*8     LITTLE ROCKS
+       LI   R1,ROKDEF
+       LI   R2,32
+       BLWP @VMBW
+ 
+       LI   R0,>AC*8     BIG ROCKS
+       LI   R1,RKDEF1
+       BLWP @VMBW
+ 
+       LI   R0,>0364     DISABLE #24-
+       LI   R1,>D000
+DSBL   BLWP @VSBW
+       AI   R0,4
+       CI   R0,>0380
+       JLT  DSBL
+ 
+       LI   R0,25
+       SWPB R0
+       MOVB R0,@INMOTN
+       LI   R0,>0100     KEY UNIT 1 FOR JOYSTICK
+       MOVB R0,@KBOARD
+       MOV  @>83C0,@RSEED
+       B    @KEY2        WAIT FOR KEY PRESS TO START GAME
+BEGIN  CLR  @SCORE
+       LI   R0,5
+       MOV  R0,@SHIPS
+ 
+       CLR  R0           CLEAR SCREEN
+       LI   R1,>2000
+CL1    BLWP @VSBW
+       INC  R0
+       CI   R0,768
+       JNE  CL1
+ 
+* DISPLAY "SHIPS"
+ 
+       LI   R0,18
+       LI   R1,WSHIPS
+       LI   R2,6
+       BLWP @VMBW
+       BL   @PSHIPS
+ 
+* DISPLAY "SCORE"
+ 
+       LI   R0,2
+       LI   R1,WSCORE
+       LI   R2,6
+       BLWP @VMBW
+       BL   @UPSCR
+ 
+* BEGIN GAME
+ 
+START  LI   R0,>0300     LOAD ATTRIBUTES FOR SHIP
+       LI   R1,SHIP
+       LI   R2,4
+       BLWP @VMBW
+ 
+       LI   R0,>0780     STOP MOTION OF SHIP
+       CLR  R1
+       BLWP @VSBW
+       INC  R0
+       BLWP @VSBW
+ 
+       LI   R0,>0304     LOAD ATTRIBUTES FOR MISSILE
+       LI   R1,MSSL
+ATT1   BLWP @VMBW
+       AI   R0,>0004
+       CI   R0,>0314
+       JNE  ATT1
+ 
+       BL   @ROCKS       LOAD ATTRIBUTES & MOTION FOR ROCKS
+ 
+KEY    LIMI 2
+       LIMI 0
+       BL   @CHKMSL      CHECK FOR EXPIRED MISSILES
+       LIMI 2
+       LIMI 0
+       BL   @GOTCHA      CHECK FOR HIT
+       LIMI 2
+       LIMI 0
+       BL   @OUCH        CHECK FOR CRASH
+ 
+       BLWP @KSCAN
+       MOVB @STATUS,R1   NEW KEY PRESSED? (FIRE BUTTON JUST HIT)
+       COC  @KMASK,R1    TO GET INSTANT RESPONSE ON FIRST KEY PRESS
+       JEQ  A1           SKIP DELAY
+ 
+       MOVB @KCODE,R4    IF NO KEY THEN CHECK POS
+       CI   R4,>FF00     NO KEY PRESSED (FIRE BUTTON NOT PRESSED)
+       JHE  A2
+ 
+*** SAME KEY (HOLDING FIRE BUTTON) ***
+ 
+       LI   R9,>0007     REGULATE FIRE RATE
+DELFIR LIMI 2
+       LIMI 0
+       BL   @CHKMSL      CHECK FOR EXPIRED MISSILES
+       LIMI 2
+       LIMI 0
+       BL   @GOTCHA      CHECK FOR HIT
+       LIMI 2
+       LIMI 0
+       BL   @OUCH        CHECK FOR CRASH
+       DEC  R9           COUNTDOWN TO NEXT FIRE
+       JNE  DELFIR
+       JMP  A1           CHECK FOR TURN
+ 
+A2     CLR  R3
+       MOVB @XVAL,R3
+       JEQ  A1           IS JOYSTICK NEUTRAL
+       CB   R3,@HOLD     SAME AS LAST MOVE
+       JNE  A1
+       MOVB R3,@HOLD
+ 
+A1     CLR  R3
+       MOVB @XVAL,R3
+       MOVB R3,@HOLD     *REDUNDANT? YES, BUT SECTION A2 IS SOMETIMES SKIPPED
+       CLR  R4
+       MOVB @KCODE,R4    CHECK FIRE BUTTON
+       LI   R0,>0302     SAL LOCATION OF SHIP CHARACTER CODE
+       CLR  R1
+ 
+       CI   R3,>0400     RIGHT?
+       JNE  N3
+       BLWP @VSBR        READ CHAR CODE OF SHIP
+       CI   R1,>9C00     CHAR(135)?
+       JEQ  FDEF
+       AI   R1,>0400     ADD 4 TO CHAR CODE (ROTATE CLOCKWISE)
+       BLWP @VSBW        PUT NEW CHAR CODE BACK IN SAL
+       JMP  FBUTN
+FDEF   LI   R1,>8000     LAST TO FIRST CHARDEF
+       BLWP @VSBW
+       JMP  FBUTN
+ 
+N3     CI   R3,>FC00     2'S COMP OF -4
+       JNE  FBUTN
+       BLWP @VSBR
+       CI   R1,>8000     FIRST CODE
+       JEQ  LDEF         Y: SWITCH TO LAST
+       AI   R1,->0400    N: BACK UP 1
+       BLWP @VSBW
+       JMP  FBUTN
+LDEF   LI   R1,>9C00
+       BLWP @VSBW
+ 
+FBUTN  CI   R4,>1200
+       JEQ  FIRE
+ 
+       LI   R9,>000E     NO KEY-DELAY BEFORE READING NEXT POSITION
+DELROT LIMI 2
+       LIMI 0
+       BL   @CHKMSL
+       LIMI 2
+       LIMI 0
+       BL   @GOTCHA
+       LIMI 2
+       LIMI 0
+       BL   @OUCH
+       DEC  R9
+       JNE  DELROT
+       B    @KEY
+ 
+FIRE   LIMI 2
+       LIMI 0
+       LI   R0,>0302     GET CHAR CODE OF SHIP
+       CLR  R1
+       BLWP @VSBR
+       SWPB R1
+       AI   R1,->80      SUBTRACT LOWEST CHAR CODE TO GET NUMBER
+       SRL  R1,1        *DIVIDE BY 4 BYTES PER DEF (MAGNIFICATION 3)
+*                       *MULTIPLY BY 2 BYTES PER ENTRY
+*                       *NET IS DIVIDE BY 2
+ 
+       AI   R1,DRCTN     ADD BASE ADDRESS OF MOTION DATA
+       MOV  R1,R4        HOLD ADDRESS OF MOTION DATA
+ 
+       LI   R0,>0784     CHECK MOTION TABLE FOR UNUSED MISSILES
+       LI   R1,TEMP
+       LI   R2,2
+CHKMTN BLWP @VMBR        READ MOTION DATA
+       MOV  @TEMP,R6
+       CI   R6,0         IF 0 THEN USE
+       JEQ  SHOOT
+       AI   R0,4         TRY NEXT SPRITE
+       CI   R0,>0794     END OF LIST?
+       JNE  CHKMTN       NO: CHECK
+       B    @KEY          YES: CAN'T FIRE
+ 
+SHOOT  MOV  R4,R1
+       BLWP @VMBW
+       AI   R0,->0480    MOVE TO COLOR BYTE OF SAL
+       LI   R1,>6400     SET TO WHITE
+       BLWP @VSBW
+       B    @KEY
+ 
+*** CHECK FOR MISSILES OFF SCREEN ***
+ 
+CHKMSL MOV  R11,@SUBRET
+       LI   R0,>0304
+       LI   R1,CHKBUF
+       LI   R2,16
+       BLWP @VMBR
+ 
+GETPOS CLR  R2
+       MOVB *R1,R2
+       CI   R2,>BE00     BOTTOM OF SCREEN?
+       JH   DELSPR
+ 
+       INC  R1           READ X-POS
+       MOVB *R1,R2
+       CI   R2,>1000     LEFT EDGE?
+       JL   DELSP1
+       CI   R2,>EF00     RIGHT EDGE?
+       JH   DELSP1       IF NOT CHECK NEXT
+       DEC  R1
+ 
+NEXT2  AI   R1,4
+       AI   R0,4
+       CI   R0,>0314
+       JNE  GETPOS
+       MOV  @SUBRET,R11
+       RT
+ 
+DELSP1 DEC  R1
+DELSPR AI   R0,>0480     STOP MOTION
+       MOV  R1,@SAVE
+       LI   R1,BLANK
+       LI   R2,2
+       BLWP @VMBW
+       AI   R0,->0480
+       LI   R1,MSSL      RESET TO NEUTRAL ATTRIBUTES
+       LI   R2,4
+       BLWP @VMBW
+       MOV  @SAVE,R1
+       JMP  NEXT2
+ 
+*** CHECK FOR MSL-ROCK COINC ***
+ 
+GOTCHA MOV  R11,@SUBRET
+       CLR  R4           R4 CONTROLS WHICH MISSILE IS CHECKED
+       CLR  R3
+READUM LI   R0,>0304        AND SERVES AS COUNTER FOR FINISH OF MISSILE CHECKS
+       A    R4,R0        R4 INCREMENTED BY 4 AFTER EACH SET OF CHECKS
+ 
+       SWPB R0
+       MOVB R0,@VDPWA
+       SWPB R0
+       MOVB R0,@VDPWA
+       NOP
+       MOVB @VDPRD,@MSLPOS
+       NOP
+       MOVB @VDPRD,@MSLPOS+1  *VDPWA IS AUTO INCREMENTED
+ 
+       C    @MSLPOS,@NOMSL
+       JEQ  NXTMSL
+ 
+       LI   R0,>0314     STARTING LOCATION OF ROCKS IN SAL
+READRK LI   R1,ROKPOS
+ 
+       SWPB R0
+       MOVB R0,@VDPWA
+       SWPB R0
+       MOVB R0,@VDPWA
+       NOP
+       MOVB @VDPRD,@ROKPOS
+       NOP
+       MOVB @VDPRD,@ROKPOS+1
+       CLR  R5
+       MOVB @VDPRD,R5
+ 
+       C    @ROKPOS,@NOROK
+       JEQ  NXTROK
+       CI   R5,>AC00
+       JEQ  BIGROK
+ 
+       MOVB @MSLPOS,R3   Y-COORDINATE
+       SB   @ROKPOS,R3   FIND DIFF BETWEEN POSITIONS
+       JLT  NXTROK
+       CI   R3,>0800     LESS THAN 9
+       JGT  NXTROK
+       MOVB @MSLPOS+1,R3
+       SB   @ROKPOS+1,R3
+       JLT  NXTROK
+       CI   R3,>0800     X-COORDINATE
+       JLE  ROKHIT
+       JMP  NXTROK
+ 
+BIGROK MOVB @MSLPOS,R3
+       SB   @ROKPOS,R3
+       JLT  NXTROK
+       CI   R3,>1000     LESS THAN 16 PIXELS?
+       JGT  NXTROK
+       MOVB @MSLPOS+1,R3
+       SB   @ROKPOS+1,R3
+       JLT  NXTROK
+       CI   R3,>1000     16 PIXELS?
+       JGT  NXTROK
+       B    @BIGHIT
+ 
+NXTROK AI   R0,4
+       CI   R0,>0364     SPRITE #25
+       JLT  READRK
+       LIMI 2            MOVE SPRITES
+       LIMI 0
+NXTMSL AI   R4,4
+       CI   R4,>0010
+       JLT  READUM
+       MOV  @SUBRET,R11
+       RT
+ 
+ROKHIT MOV  R0,@SAVE     SAVE FOR NEXT ROCK
+       LI   R1,RKDATA
+       LI   R2,4
+       BLWP @VMBW
+       AI   R0,>0480
+       LI   R1,BLANK
+       LI   R2,2
+       BLWP @VMBW
+ 
+       LI   R0,>0304     DELETE MISSILE
+       A    R4,R0
+       LI   R1,MSSL
+       LI   R2,4
+       BLWP @VMBW
+       AI   R0,>0480
+       LI   R1,BLANK
+       LI   R2,2
+       BLWP @VMBW
+ 
+       LI   R0,25        POINTS FOR SMALL ROCK
+       BL   @UPSCR       UPDATE SCORE
+       MOV  @SAVE,R0     SAVED R0 FOR RETURN FORM ROKHIT
+       DEC  @ASTERS
+       JNE  NXTROK
+ 
+ 
+       LI   R0,>0300     FOR NEXT SCREEN
+       LI   R1,SHIP
+       LI   R2,4
+       BLWP @VMBR
+ 
+       LI   R9,>01FF     ALL DOWN
+DELST  BL   @CHKMSL
+       LIMI 2
+       LIMI 0
+       DEC  R9
+       JNE  DELST
+       B    @START
+ 
+ 
+BIGHIT MOV  R0,@SAVE
+       LI   R5,>A40F     SMALL ROCK CHR & COLOR
+       MOV  R5,@ROKPOS+2
+       LI   R2,4
+       BLWP @VMBW        SET TO SMALL ROCK
+       AI   R0,40        TWIN ROCK
+       BLWP @VMBW        SET TWIN ROCK ATTRIBUTES SAME AS FIRST
+ 
+       AI   R0,-40
+       AI   R0,>0480     MOTION OF FIRST ROCK
+       LI   R1,TEMP      GARBAGE ADDRESS
+       LI   R2,2
+       BLWP @VMBR        READ MOTION VECTORS
+       AI   R0,40
+       BLWP @VMBW        SET MOTION OF TWIN ROCK MOTION SAME AS FIRST
+ 
+       LI   R0,>0304     RESET MISSILE
+       A    R4,R0
+       LI   R1,MSSL
+       LI   R2,4
+       BLWP @VMBW
+ 
+       AI   R0,>0480
+       LI   R1,TEMP
+       LI   R2,2
+       BLWP @VMBR        READ MOTION VECTORS FOR ROCK SPLIT
+       LI   R1,BLANK
+       BLWP @VMBW        STOP MISSILE
+ 
+       LI   R3,DRCTN     FIND POS OF MOTION
+READV  C    *R3,@TEMP
+       JEQ  FOUND
+       INCT R3           NEXT WORD
+       JMP  READV
+ 
+FOUND  LI   R1,DRCTN     START ADDRESS OF OLD DATA
+       S    R1,R3        GET RELATIVE POSITION OF WORD
+       SLA  R3,1         TWO WORD ENTRIES FOR NEW DATA
+       AI   R3,SPLIT     START ADDRESS OF NEW DATA
+ 
+       MOV  @SAVE,R0     VDP ADDRESS OF ROCK ATTRIBUTES
+       AI   R0,>0480     TO MOTION TABLE
+       LI   R1,TEMP
+       BLWP @VMBR        READ MOTION OF ROCK
+       AB   *R3+,@TEMP   ADD Y-VECTOR
+       AB   *R3+,@TEMP+1 ADD X-VECTOR
+       JNE  SET1
+       INCT @TEMP        AVOID STILL ROCKS
+SET1   BLWP @VMBW
+ 
+       AI   R0,40
+       BLWP @VMBR        READ MOTION OF TWIN ROCK
+       AB   *R3+,@TEMP   ADD Y-VECTOR
+       AB   *R3,@TEMP+1  ADD X-VECTOR
+       JNE  SET2
+       INCT @TEMP        AVOID STILL ROCKS
+SET2   BLWP @VMBW
+ 
+       DEC  @ASTERS
+       LI   R0,10
+       BL   @UPSCR
+       MOV  @SAVE,R0
+       B    @NXTROK
+ 
+*** CHECK FOR SHIP DEAD ***
+ 
+OUCH   MOV  R11,@SUBRET
+       LI   R0,>0300
+       LI   R1,CHKBUF    REWRITTEN FROM PRINTOUT FROM THIS POINT ON
+       LI   R2,2
+       BLWP @VMBR
+ 
+       CLR  R3
+       LI   R0,>0314
+ 
+CHKSHP SWPB R0
+       MOVB R0,@VDPWA
+       SWPB R0
+       MOVB R0,@VDPWA
+       NOP
+       MOVB @VDPRD,@ROKPOS
+       NOP
+       MOVB @VDPRD,@ROKPOS+1
+       CLR  R5
+       MOVB @VDPRD,R5
+ 
+       MOVB @ROKPOS,R3
+       SB   @CHKBUF,R3
+       ABS  R3
+       CI   R3,>0700
+       JGT  NXTSHP
+       MOVB @ROKPOS+1,R3
+       SB   @CHKBUF+1,R3
+       ABS  R3
+       CI   R5,>A400     CHR CODE FOR SMALL ROCK
+       JEQ  SMLO
+       CI   R3,>0F00     WITHIN 15 PIXELS?
+       JLE  DEDMAN
+       JMP  NXTSHP
+SMLO   CI   R3,>0700     WITHIN 7 PIXELS?
+       JLE  DEDMAN
+ 
+NXTSHP AI   R0,4
+       CI   R0,>0360
+       JLT  CHKSHP
+       MOV  @SUBRET,R11
+       RT
+ 
+DEDMAN DEC  @SHIPS
+       MOV  R0,@SAVE
+       MOV  R1,@SAVE2
+ 
+       LI   R1,RKDATA
+       LI   R2,4
+       BLWP @VMBW
+       AI   R0,>0480
+       LI   R1,BLANK
+       LI   R2,2
+       BLWP @VMBW
+ 
+       LI   R0,>0300
+       LI   R1,SHIP
+       LI   R2,4
+       BLWP @VMBR
+ 
+* BLOW UP SHIP AND SCATTER DEBRI
+ 
+       LI   R1,DEBRI
+BOOM   BLWP @VMBW
+       AI   R0,4
+       CI   R0,>0350
+       JNE  BOOM
+ 
+       LI   R0,>0780     SET IN MOTION
+       LI   R1,DEBMOT    PREDEFINED MOTION DATA
+       LI   R2,80
+       BLWP @VMBW
+ 
+* UPDATE SHIP COUNT ON SCREEN
+ 
+       BL   @PSHIPS
+ 
+       LI   R0,>FFFF
+DELEXP LIMI 2
+       LIMI 0
+       DEC  R0
+       JNE  DELEXP
+       MOV  @SAVE,R0
+       MOV  @SAVE2,R1
+       B    @START
+ 
+*** GAME OVER
+ 
+OVER   LI   R0,300
+       LI   R1,TE1
+       LI   R2,9
+       BLWP @VMBW
+ 
+KEY2   LIMI 2            WAIT FOR KEY TO BE PRESSED TO START NEW GAME
+       LIMI 0
+       BL   @CHKMSL
+       BLWP @KSCAN
+       MOVB @STATUS,R9
+       COC  @KMASK,R9
+       JNE  KEY2
+       B    @BEGIN
+ 
+* SHOW SCORE ON SCREEN
+ 
+UPSCR  MOV  @SCORE,R7
+       A    R0,R7
+       MOV  R7,@SCORE
+       LI   R0,9         POSITION TO DISPLAY
+       SWPB R0
+       MOVB R0,@VDPWA
+       SWPB R0
+       SOC  @WRMASK,R0
+       MOVB R0,@VDPWA
+ 
+       LI   R8,DSPL
+DCH    CLR  R6
+       MOV  *R8,R5
+       DIV  R5,R6
+       MOV  R6,R1
+       AI   R1,48
+       SWPB R1
+       MOVB R1,@VDPWD
+       INCT R8
+       LIMI 2
+       LIMI 0
+       CI   R8,DSPL+10
+       JLT  DCH
+       RT
+ 
+* DISPLAY SHIP COUNT
+ 
+PSHIPS MOV  @SHIPS,R1
+       JEQ  OVER
+       LI   R0,25        SCREEN LOCATION FOR SHIPS REMAINING
+       AI   R1,48        ADJUST NUMBER TO ASC CODE OF NUMBER
+       SWPB R1
+       BLWP @VSBW
+       RT
+ 
+*** START ASTEROIDS IN MOTION ***
+ 
+ROCKS  MOV  R11,@RETURN
+       LI   R0,>0314     SET UP SAL FOR ASTEROIDS
+       LI   R1,RKDATA
+       LI   R2,4
+RATT   BLWP @VMBW
+       AI   R0,4
+       CI   R0,>0364
+       JLT  RATT
+ 
+       LI   R0,>0794
+       MOV  @RSEED,R3
+RANVAL MOV  *R3,R1
+       SRL  R1,12
+       JNE  KOSH1
+       INC  R3
+       JMP  RANVAL
+KOSH1  MOV  *R3,R2
+       CI   R2,>0FFF
+       JLT  KO1
+       NEG  R1
+KO1    SWPB R1
+       BLWP @VSBW
+ 
+       AI   R3,293
+       INC  R0
+RV2    MOVB *R3,R1
+       SRL  R1,12
+       JNE  KOSH2
+       INC  R3
+       JMP  RV2
+KOSH2  MOV  *R3,R2
+       CI   R2,>0FFF
+       JLT  KO2
+       NEG  R1
+KO2    SWPB R1
+       BLWP @VSBW
+ 
+       AI   R3,471
+       AI   R0,3
+       CI   R0,>07BC
+       JLT  RANVAL
+ 
+       LI   R1,BLANK
+       LI   R2,2
+CLRMOT BLWP @VMBW
+       AI   R0,4
+       CI   R0,>07E4
+       JLT  CLRMOT
+ 
+       LI   R0,30
+       MOV  R0,@ASTERS
+       MOV  R3,@RSEED
+       MOV  @RETURN,R11
+       RT
+ 
+*** DIRECTIONS ***
+ 
+       JMP $
+ 
+*** CHARACTER DEFS FOR SHIP ***
+ 
+UPDEF  DATA >1818,>2424,>425A,>A5C3
+       DATA >030D,>7282,>7414,>1408
+       DATA >C0B0,>4C23,>234C,>B0C0
+       DATA >0814,>1474,>8272,>0D03
+       DATA >C3A5,>5A42,>2424,>1818
+       DATA >1028,>282E,>414E,>B0C0
+       DATA >030D,>32C4,>C432,>0D03
+       DATA >C0B0,>4E41,>2E28,>2810
+ 
+*** SPRITE ATTRIBUTE SHIP DATA ***
+ 
+SHIP   BYTE >60          Y-POS
+       BYTE >80          X-POS
+       BYTE >80          CHAR CODE (STD)
+       BYTE >0F          COLOR
+ 
+*** MISSILE ATTRIBUTE DATA ***
+ 
+MSSL   BYTE >C0
+       BYTE >84
+       BYTE >A0
+       BYTE >0F          TRANSPARENT FOR STARTERS
+ 
+MSLDEF DATA >C0C0,>0000,>0000,>0000
+ 
+*** MISSILE MOTION DATA ***
+ 
+DRCTN  DATA >D500        UP
+       DATA >DF20        UP-RIGHT
+       DATA >002A        RIGHT
+       DATA >2020        DOWN-RIGHT
+       DATA >2A00        DOWN
+       DATA >20DF        DOWN-LEFT
+       DATA >00D5        LEFT
+       DATA >DFDF        UP-LEFT
+ 
+SPLIT  DATA >FB05,>FBFB
+       DATA >F900,>0007
+       DATA >0505,>FB05
+       DATA >0700,>0007
+       DATA >0505,>05FB
+       DATA >0700,>00F9
+       DATA >05FB,>FBFB
+       DATA >F900,>00F9
+ 
+*** ROCK DATA ***
+ 
+RKDATA BYTE >C0
+       BYTE >00
+       BYTE >AC          BIG ROCK DEF
+       BYTE >0F
+ 
+ROKDEF DATA >3844,>4281,>8142,>4C30
+BLANK  DATA >0000,>0000,>0000,>0000
+       DATA >0000,>0000,>0000,>0000
+       DATA 0,0,0,0
+ 
+RKDEF1 DATA >0106,>0808,>7080,>8080
+       DATA >4040,>2010,>1008,>0700
+       DATA >C020,>1C02,>0201,>0202
+       DATA >0101,>0102,>0404,>38C0
+ 
+*** DEBRI DATA ***
+ 
+DEBDEF DATA >8000,0,0,0
+DEBRI  BYTE >60          Y POS
+       BYTE >80          X POS
+       BYTE >A8          CHR CODE
+       BYTE >0F          COLOR
+ 
+DEBMOT BYTE 6,-7,0,0
+       BYTE -2,-4,0,0
+       BYTE -7,1,0,0
+       BYTE 2,-1,0,0
+       BYTE 8,-5,0,0
+       BYTE -2,8,0,0
+       BYTE -4,8,0,0
+       BYTE 9,-7,0,0
+       BYTE 8,8,0,0
+       BYTE 3,5,0,0
+       BYTE 1,-7,0,0
+       BYTE -1,-9,0,0
+       BYTE 3,6,0,0
+       BYTE -4,-8,0,0
+       BYTE -4,4,0,0
+       BYTE -9,6,0,0
+       BYTE -10,2,0,0
+       BYTE 9,-9,0,0
+       BYTE 2,2,0,0
+       BYTE 8,-8,0,0
+ 
+** MISC DATA **
+ 
+KMASK  DATA >2000
+RETURN DATA 0
+SUBRET DATA 0
+TEMP   DATA 0
+MSLPOS DATA 0
+ROKPOS DATA 0
+       DATA 0
+SHIPS  DATA 0
+ASTERS DATA 0
+SCORE  DATA 0
+DSPL   DATA 10000,1000,100,10,1
+SAVE   DATA 0
+SAVE2  DATA 0
+HOLD   DATA 0
+CHKBUF BSS  96
+NOROK  DATA >C000
+NOMSL  DATA >C084
+RSEED  DATA 0
+WRMASK DATA >4000
+WSCORE TEXT 'SCORE:'
+WSHIPS TEXT 'SHIPS:'
+TE1    TEXT 'GAME OVER'
+SUBREG BSS  32
+       END ASTRO
+ 

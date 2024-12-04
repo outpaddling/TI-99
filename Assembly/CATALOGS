@@ -1,0 +1,118 @@
+************************
+* DISK CATALOG ROUTINE *
+* 5/27/85 -            *
+************************
+ 
+       DEF CTLG
+       REF DSRLNK,VMBW,VMBR,VSBW,VSBR,KSCAN
+ 
+PAB    EQU  >0F80
+BUFFER EQU  >1000
+PNTR   EQU  >8356
+STATUS EQU  >837C
+ 
+CTLG   MOV  R11,@RETURN
+ 
+       LI   R0,PAB       VDP ADDRESS FOR PAB
+       LI   R1,OPCODE    LOCATION OF PAB DATA
+       LI   R2,50        LENGTH OF PAB
+       BLWP @VMBW
+       BLWP @OPEN
+       LI   R3,0         RECORD NUMBER FOR RELATIVE FILE
+       MOV  R3,@RECNUM
+ 
+GETREC BLWP @READ
+       INC  @RECNUM
+       LI   R0,PAB+6     NEXT RECORD
+       LI   R1,RECNUM
+       LI   R2,2
+       BLWP @VMBW
+ 
+       LI   R0,BUFFER
+       LI   R1,CPUBUF
+       LI   R2,80
+       BLWP @VMBR
+ 
+       CLR  R1
+       MOVB @CPUBUF,R1   CHECK FIRST CHAR
+       CI   R1,>2000
+       JEQ  DONE
+ 
+       BLWP @SCROLL
+       LI   R0,736
+       LI   R1,CPUBUF
+       LI   R2,10        LENGTH OF NAME
+       BLWP @VMBW        PRINT NAME
+       LIMI 2
+       LIMI 0
+       JMP  GETREC
+ 
+DONE   BLWP @CLOSE
+       MOV  @RETURN,R11
+       CLR  R1
+       MOVB R1,@STATUS
+       B    *R11
+ 
+SCROLL DATA REG1,SCRL
+SCRL   LI   R0,32        READ SCREEN STARTING AT LINE 2
+       LI   R1,SCLBUF
+       LI   R2,736
+       BLWP @VMBR
+       AI   R0,-32       MOVE UP 1 ROW
+       BLWP @VMBW        PRINT SCREEN UP 1
+       RTWP
+ 
+OPEN   DATA REG1,OP
+OP     LI   R0,PAB
+       CLR  R1
+       BLWP @VSBW
+ 
+       LI   R6,PAB+9
+       MOV  R6,@PNTR
+       BLWP @DSRLNK
+       DATA 8
+       RTWP
+ 
+READ   DATA REG1,RD
+RD     LI   R0,PAB
+       LI   R1,>0200
+       BLWP @VSBW
+ 
+       LI   R6,PAB+9
+       MOV  R6,@PNTR
+       BLWP @DSRLNK
+       DATA 8
+       RTWP
+ 
+CLOSE  DATA REG1,CL
+CL     LI   R0,PAB
+       LI   R1,>0100
+       BLWP @VSBW
+ 
+       LI   R6,PAB+9
+       MOV  R6,@PNTR
+       BLWP @DSRLNK
+       DATA 8
+       RTWP
+ 
+******************
+*  DATA FOR PAB  *
+******************
+ 
+OPCODE BYTE >00      I/O OPCODE
+FLAG   BYTE >0D      000 0 1 10 1 FLAG/STATUS BYTE
+BUFF   DATA BUFFER   VDP BUFFER ADDRESS
+LENGTH BYTE >0F      10+1+2+2 RECORD LENGTH
+COUNT  BYTE >00      CHARACTER COUNT
+RECNUM DATA >0000    RECORD NUMBER
+OFFSET BYTE >00      SCREEN OFFSET
+NAMLEN BYTE >05
+       TEXT 'DSK1.'  FILENAME
+       EVEN
+RETURN DATA 0
+CPUBUF BSS  80
+SCLBUF BSS  800
+REG1   BSS  32
+       END
+ 
+ 
