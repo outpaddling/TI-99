@@ -14,5 +14,8 @@ will grow as I find time to sift through
 the many files I have transferred from numerous disorganized floppy
 disks.
 
+All of my code is released under the MIT license, so is free to use
+for any purpose.  3rd-party tools included here have their own licenses.
+
 Probably the most interesting project is the Asteroids game, written
 in assembly language.  I hope some TI fans out there will enjoy it!
