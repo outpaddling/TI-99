@@ -8,7 +8,9 @@ This eventually led to a long and rewarding career in the computer
 industry.
 
 This is a collection of old programs I wrote as a kid that I deemed
-worth sharing.  The collection will grow as I find time to sift through
+worth sharing, as well as some interesting tools like the C99 compiler
+that are a little difficult to track down elsewhere.  The collection
+will grow as I find time to sift through
 the many files I have transferred from numerous disorganized floppy
 disks.
 
